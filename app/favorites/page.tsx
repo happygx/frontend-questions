@@ -98,11 +98,6 @@ export default function FavoritesPage() {
               </span>
               我的收藏
             </h1>
-            <p className="text-xs text-gray-500">
-              {mainBusy
-                ? "加载中…"
-                : `共 ${favoriteCount} 题 · 已同步到云端（同一账号多设备一致）`}
-            </p>
             <AuthBar />
           </div>
         </div>
@@ -165,7 +160,8 @@ export default function FavoritesPage() {
           </div>
         ) : items.length === 0 ? (
           <div className="rounded-2xl border border-amber-200 bg-amber-50/80 px-4 py-8 text-center text-sm text-amber-900">
-            部分收藏可能已失效（题目已下架或仍使用旧版本地路径 ID）。可在题库中重新收藏。
+            部分收藏可能已失效（题目已下架或仍使用旧版本地路径
+            ID）。可在题库中重新收藏。
             <div className="mt-3">
               <Link
                 href="/"
