@@ -67,39 +67,51 @@ function rowToQuestion(row: QuestionRowDb): Question {
 // Supabase（唯一数据源）
 // ═════════════════════════════════════════════
 
-/** PostgREST 单次查询默认最多 1000 行；全表 tag_id 必须分页累加，否则分类计数与 Tab 会缺项 */
-const QUESTION_TAG_CHUNK = 1000
+/** PostgREST 单次查询默认最多 1000 行，需分页累加 */
+const CHUNK = 1000
 
+// ─────────────────────────────────────────────
+// 分类列表
+// ─────────────────────────────────────────────
+
+/**
+ * 从 question_tags 统计各分类题目数。
+ * 同一道题可属于多个分类（多对多），计数与源站一致。
+ */
 export async function getCategories(): Promise<Category[]> {
   const supabase = getSupabaseServer()
   const cnt = new Map<number, number>()
   let from = 0
   for (;;) {
-    const { data: chunk, error: e1 } = await supabase
-      .from('questions')
+    const { data: chunk, error } = await supabase
+      .from('question_tags')
       .select('tag_id')
-      .range(from, from + QUESTION_TAG_CHUNK - 1)
-    if (e1) throw new Error(e1.message)
+      .range(from, from + CHUNK - 1)
+    if (error) throw new Error(error.message)
     const rows = chunk ?? []
     if (rows.length === 0) break
     for (const r of rows) {
-      const tid = (r as { tag_id: number | null }).tag_id
-      if (tid == null) continue
+      const tid = (r as { tag_id: number }).tag_id
       cnt.set(tid, (cnt.get(tid) ?? 0) + 1)
     }
-    if (rows.length < QUESTION_TAG_CHUNK) break
-    from += QUESTION_TAG_CHUNK
+    if (rows.length < CHUNK) break
+    from += CHUNK
   }
+
   const { data: tags, error: e2 } = await supabase
     .from('tags')
     .select('id, tag_name')
-    .order('tag_name')
   if (e2) throw new Error(e2.message)
+
   return (tags ?? [])
     .map((t) => ({ name: t.tag_name as string, count: cnt.get(t.id as number) ?? 0 }))
     .filter((c) => c.count > 0)
     .sort((a, b) => b.count - a.count)
 }
+
+// ─────────────────────────────────────────────
+// 题目列表
+// ─────────────────────────────────────────────
 
 export interface GetQuestionsParams {
   category?: string
@@ -109,12 +121,17 @@ export interface GetQuestionsParams {
   pageSize?: number
 }
 
+/**
+ * 分类筛选通过 question_tags 多对多关联，保证一道题属于多个分类时都能被查到。
+ * 无分类筛选时直接查 questions 表（性能最优）。
+ */
 export async function getQuestions(params: GetQuestionsParams) {
   const { category, difficulty, q, page = 1, pageSize = 20 } = params
   const supabase = getSupabaseServer()
   const from = (page - 1) * pageSize
   const to = from + pageSize - 1
 
+  // 解析分类 → tag_id
   let tagId: number | undefined
   if (category && category !== 'all') {
     const { data: tag, error: te } = await supabase
@@ -127,37 +144,74 @@ export async function getQuestions(params: GetQuestionsParams) {
     tagId = tag.id as number
   }
 
-  const buildFiltered = () => {
-    let qb = supabase.from('questions').select('exercise_key, title, level, tag_id, tags(tag_name)', {
-      count: 'exact',
-    })
-    if (tagId !== undefined) qb = qb.eq('tag_id', tagId)
-    if (difficulty && difficulty !== ('all' as string)) {
-      if (difficulty === 'beginner') qb = qb.in('level', [1, 2])
-      else if (difficulty === 'intermediate') qb = qb.eq('level', 3)
-      else if (difficulty === 'advanced') qb = qb.in('level', [4, 5])
-      else if (difficulty === 'unknown') qb = qb.is('level', null)
-    }
-    const kw = q ? sanitizeSearchKw(q) : ''
-    if (kw) qb = qb.ilike('title', `%${kw}%`)
-    return qb
-  }
+  let data: QuestionRowDb[] | null = null
+  let count: number | null = null
+  let error: { message: string } | null = null
+  const kw = q ? sanitizeSearchKw(q) : ''
 
-  const { data, error, count } = await buildFiltered()
-    .order('title')
-    .range(from, to)
+  if (tagId !== undefined) {
+    // ── 有分类过滤 ──
+    // Step 1: 从 question_tags 拉取该分类下全部 exercise_key（单分类最多几百条）
+    const { data: keyRows, error: keyErr } = await supabase
+      .from('question_tags')
+      .select('exercise_key')
+      .eq('tag_id', tagId)
+    if (keyErr) throw new Error(keyErr.message)
+    const keys = (keyRows ?? []).map((r) => (r as { exercise_key: string }).exercise_key)
+
+    if (keys.length === 0) {
+      return { questions: [] as Question[], total: 0, page, pageSize }
+    }
+
+    // Step 2: 在 questions 中按 key 列表 + 难度/关键词过滤，带精确 count 和分页
+    let qb = supabase
+      .from('questions')
+      .select('exercise_key, title, level, tag_id, tags!tag_id(tag_name)', { count: 'exact' })
+      .in('exercise_key', keys)
+
+    if (difficulty === 'beginner')          qb = qb.in('level', [1, 2])
+    else if (difficulty === 'intermediate') qb = qb.eq('level', 3)
+    else if (difficulty === 'advanced')     qb = qb.in('level', [4, 5])
+    else if (difficulty === 'unknown')      qb = qb.is('level', null)
+    if (kw) qb = qb.ilike('title', `%${kw}%`)
+
+    const result = await qb.order('title').range(from, to)
+    data  = result.data as QuestionRowDb[] | null
+    count = result.count
+    error = result.error
+  } else {
+    // ── 无分类过滤：直接查 questions ──
+    let qb = supabase
+      .from('questions')
+      .select('exercise_key, title, level, tag_id, tags!tag_id(tag_name)', { count: 'exact' })
+
+    if (difficulty === 'beginner')          qb = qb.in('level', [1, 2])
+    else if (difficulty === 'intermediate') qb = qb.eq('level', 3)
+    else if (difficulty === 'advanced')     qb = qb.in('level', [4, 5])
+    else if (difficulty === 'unknown')      qb = qb.is('level', null)
+    if (kw) qb = qb.ilike('title', `%${kw}%`)
+
+    const result = await qb.order('title').range(from, to)
+    data  = result.data as QuestionRowDb[] | null
+    count = result.count
+    error = result.error
+  }
 
   if (error) throw new Error(error.message)
 
-  const questions = (data ?? []).map((row) => rowToQuestion(row as QuestionRowDb))
+  const questions = (data ?? []).map((row) => rowToQuestion(row))
   return { questions, total: count ?? 0, page, pageSize }
 }
+
+// ─────────────────────────────────────────────
+// 批量 / 详情
+// ─────────────────────────────────────────────
 
 export async function getAllQuestions(): Promise<Question[]> {
   const supabase = getSupabaseServer()
   const { data, error } = await supabase
     .from('questions')
-    .select('exercise_key, title, level, tag_id, tags(tag_name)')
+    .select('exercise_key, title, level, tag_id, tags!tag_id(tag_name)')
     .order('title')
   if (error) throw new Error(error.message)
   return (data ?? []).map((row) => rowToQuestion(row as QuestionRowDb))
@@ -168,7 +222,7 @@ export async function getQuestionsByIds(ids: string[]): Promise<Question[]> {
   const supabase = getSupabaseServer()
   const { data, error } = await supabase
     .from('questions')
-    .select('exercise_key, title, level, tag_id, tags(tag_name)')
+    .select('exercise_key, title, level, tag_id, tags!tag_id(tag_name)')
     .in('exercise_key', ids)
   if (error) throw new Error(error.message)
   const map = new Map(
@@ -181,7 +235,7 @@ export async function getQuestionDetail(id: string): Promise<QuestionDetail | nu
   const supabase = getSupabaseServer()
   const { data, error } = await supabase
     .from('questions')
-    .select('exercise_key, title, level, pivot, explanation, tags(tag_name)')
+    .select('exercise_key, title, level, pivot, explanation, tags!tag_id(tag_name)')
     .eq('exercise_key', id)
     .maybeSingle()
   if (error) throw new Error(error.message)

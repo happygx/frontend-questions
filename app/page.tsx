@@ -6,7 +6,6 @@ import { HeartFilled } from "@/components/HeartIcon";
 import CategoryTabs from "@/components/CategoryTabs";
 import DifficultyFilter from "@/components/DifficultyFilter";
 import QuestionCard from "@/components/QuestionCard";
-import QuestionDetail from "@/components/QuestionDetail";
 import Pagination from "@/components/Pagination";
 import AuthBar from "@/components/AuthBar";
 import { useFavorites } from "@/lib/favorites";
@@ -28,14 +27,17 @@ export default function Home() {
   const [data, setData] = useState<QuestionsResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [categories, setCategories] = useState<Category[]>([]);
+  const [totalAll, setTotalAll] = useState(0);
 
-  const [activeId, setActiveId] = useState<string | null>(null);
-
-  const { isFavorite, toggleFavorite, favoriteCount, ready: favoritesReady, error: favoritesError } =
-    useFavorites();
+  const {
+    isFavorite,
+    toggleFavorite,
+    favoriteCount,
+    ready: favoritesReady,
+    error: favoritesError,
+  } = useFavorites();
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // ── 拉取数据 ──
   const fetchData = useCallback(
     async (cat: string, diff: DifficultyGroup, q: string, p: number) => {
       setLoading(true);
@@ -49,8 +51,11 @@ export default function Home() {
       try {
         const res = await fetch(`/api/questions?${params}`);
         const json: QuestionsResponse = await res.json();
+        if (!res.ok || !Array.isArray(json.categories)) return;
         setData(json);
         if (json.categories.length) setCategories(json.categories);
+        // 只在无任何筛选时更新"全部"总数，避免切换分类/搜索后数字跳变
+        if (cat === 'all' && diff === 'all' && !q) setTotalAll(json.total);
       } finally {
         setLoading(false);
       }
@@ -58,7 +63,6 @@ export default function Home() {
     [],
   );
 
-  // 任何过滤条件变化时重置到第 1 页
   useEffect(() => {
     fetchData(category, difficulty, searchQ, page);
   }, [category, difficulty, searchQ, page, fetchData]);
@@ -89,10 +93,12 @@ export default function Home() {
       {/* ── 顶部 Header ── */}
       <header className="sticky top-0 z-40 bg-white border-b border-gray-200 shadow-sm">
         <div className="max-w-5xl mx-auto px-4">
-          {/* Title + 搜索 */}
-          <div className="flex flex-wrap items-center justify-between gap-3 py-3">
-            <div className="flex min-w-0 flex-1 items-center gap-3">
-              <h1 className="shrink-0 text-lg font-bold text-gray-800">📚 题库</h1>
+          <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3 py-3">
+            {/* 左：标题 + 收藏 */}
+            <div className="flex min-w-0 items-center gap-3">
+              <h1 className="shrink-0 text-lg font-bold text-gray-800">
+                📚 题库
+              </h1>
               <Link
                 href="/favorites"
                 title={favoritesError ?? undefined}
@@ -107,23 +113,28 @@ export default function Home() {
                 ) : null}
               </Link>
             </div>
-            <div className="flex w-full min-w-0 flex-1 items-center justify-end gap-3 sm:w-auto sm:flex-initial">
-              <input
-                type="search"
-                placeholder="按标题搜索…"
-                title="仅匹配题目标题，不包含正文"
-                className="h-8 min-w-0 flex-1 max-w-md rounded-lg border border-gray-200 bg-gray-50 px-3 text-sm outline-none focus:border-blue-400 sm:flex-initial"
-                onChange={(e) => handleSearch(e.target.value)}
-              />
+
+            {/* 中：搜索框（绝对居中） */}
+            <input
+              suppressHydrationWarning
+              type="search"
+              placeholder="按标题搜索…"
+              title="仅匹配题目标题，不包含正文"
+              className="h-8 w-56 rounded-lg border border-gray-200 bg-gray-50 px-3 text-sm outline-none focus:border-blue-400 focus:bg-white sm:w-72"
+              onChange={(e) => handleSearch(e.target.value)}
+            />
+
+            {/* 右：AuthBar */}
+            <div className="flex justify-end">
               <AuthBar />
             </div>
           </div>
 
-          {/* 分类 tabs */}
           <div className="pb-2">
             <CategoryTabs
               categories={categories}
               active={category}
+              totalAll={totalAll}
               onChange={handleCategoryChange}
             />
           </div>
@@ -132,7 +143,6 @@ export default function Home() {
 
       {/* ── 主体 ── */}
       <main className="max-w-5xl mx-auto px-4 py-4">
-        {/* 难度过滤 + 统计 */}
         <div className="flex items-center justify-between mb-3">
           <DifficultyFilter
             active={difficulty}
@@ -143,7 +153,6 @@ export default function Home() {
           </span>
         </div>
 
-        {/* 题目列表 */}
         <div className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm">
           {loading ? (
             <div className="divide-y divide-gray-100">
@@ -174,7 +183,6 @@ export default function Home() {
                   favorited={isFavorite(q.id)}
                   favoritesDisabled={!favoritesReady}
                   onFavoriteToggle={toggleFavorite}
-                  onClick={(q) => setActiveId(q.id)}
                 />
               ))}
             </div>
@@ -191,13 +199,6 @@ export default function Home() {
           />
         </div>
       </main>
-
-      {/* ── 题目详情 Modal ── */}
-      <QuestionDetail
-        questionId={activeId}
-        onClose={() => setActiveId(null)}
-        favoritesDisabled={!favoritesReady}
-      />
     </div>
   );
 }

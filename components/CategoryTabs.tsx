@@ -5,14 +5,13 @@ import type { Category } from "@/types";
 interface Props {
   categories: Category[];
   active: string;
+  totalAll: number;
   onChange: (name: string) => void;
 }
 
-export default function CategoryTabs({ categories, active, onChange }: Props) {
-  const total = categories.reduce((s, c) => s + c.count, 0);
-
+export default function CategoryTabs({ categories, active, totalAll, onChange }: Props) {
   const tabs = [
-    { name: "all", count: total, label: "全部" },
+    { name: "all", count: totalAll, label: "全部" },
     ...categories.map((c) => ({ name: c.name, count: c.count, label: c.name })),
   ];
 

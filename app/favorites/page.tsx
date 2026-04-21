@@ -6,7 +6,6 @@ import { HeartFilled, HeartOutline } from "@/components/HeartIcon";
 import Pagination from "@/components/Pagination";
 import AuthBar from "@/components/AuthBar";
 import QuestionCard from "@/components/QuestionCard";
-import QuestionDetail from "@/components/QuestionDetail";
 import { useFavorites } from "@/lib/favorites";
 import type { Question } from "@/types";
 
@@ -24,7 +23,6 @@ export default function FavoritesPage() {
   const [items, setItems] = useState<Question[]>([]);
   const [batchLoading, setBatchLoading] = useState(false);
   const [page, setPage] = useState(1);
-  const [activeId, setActiveId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!favoritesReady) return;
@@ -191,7 +189,6 @@ export default function FavoritesPage() {
                   favorited={isFavorite(q.id)}
                   favoritesDisabled={!favoritesReady}
                   onFavoriteToggle={toggleFavorite}
-                  onClick={(q) => setActiveId(q.id)}
                 />
               ))}
             </div>
@@ -207,12 +204,6 @@ export default function FavoritesPage() {
           </div>
         )}
       </main>
-
-      <QuestionDetail
-        questionId={activeId}
-        onClose={() => setActiveId(null)}
-        favoritesDisabled={!favoritesReady}
-      />
     </div>
   );
 }

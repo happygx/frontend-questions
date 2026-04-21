@@ -97,9 +97,11 @@ export function FavoritesProvider({ children }: { children: ReactNode }) {
         } = await supabase.auth.getSession())
       }
 
+      // getSession() 读 localStorage，避免与 AuthBar/AuthGuard 的并发请求争 Web Lock
       const {
-        data: { user },
-      } = await supabase.auth.getUser()
+        data: { session: currentSession },
+      } = await supabase.auth.getSession()
+      const user = currentSession?.user
       if (!user) {
         setError('无法建立匿名会话')
         if (!soft) setFavoriteIds([])

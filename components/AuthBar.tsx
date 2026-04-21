@@ -9,10 +9,11 @@ export default function AuthBar() {
 
   const sync = useCallback(async () => {
     const supabase = getSupabaseBrowser()
+    // getSession() 读 localStorage，无网络请求无 Web Lock，避免与其他并发 getUser() 争锁
     const {
-      data: { user },
-    } = await supabase.auth.getUser()
-    setEmail(user?.email ?? null)
+      data: { session },
+    } = await supabase.auth.getSession()
+    setEmail(session?.user?.email ?? null)
   }, [])
 
   useEffect(() => {
