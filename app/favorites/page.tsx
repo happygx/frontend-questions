@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { HeartFilled, HeartOutline } from "@/components/HeartIcon";
 import Pagination from "@/components/Pagination";
+import AuthBar from "@/components/AuthBar";
 import QuestionCard from "@/components/QuestionCard";
 import QuestionDetail from "@/components/QuestionDetail";
 import { useFavorites } from "@/lib/favorites";
@@ -12,22 +13,29 @@ import type { Question } from "@/types";
 const PAGE_SIZE = 20;
 
 export default function FavoritesPage() {
-  const { favoriteIds, isFavorite, toggleFavorite, favoriteCount } =
-    useFavorites();
+  const {
+    favoriteIds,
+    isFavorite,
+    toggleFavorite,
+    favoriteCount,
+    ready: favoritesReady,
+    error: favoritesError,
+  } = useFavorites();
   const [items, setItems] = useState<Question[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [batchLoading, setBatchLoading] = useState(false);
   const [page, setPage] = useState(1);
   const [activeId, setActiveId] = useState<string | null>(null);
 
   useEffect(() => {
+    if (!favoritesReady) return;
     if (favoriteIds.length === 0) {
       setItems([]);
-      setLoading(false);
+      setBatchLoading(false);
       return;
     }
 
     let cancelled = false;
-    setLoading(true);
+    setBatchLoading(true);
     fetch("/api/questions/batch", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -38,13 +46,15 @@ export default function FavoritesPage() {
         if (!cancelled) setItems(d.questions ?? []);
       })
       .finally(() => {
-        if (!cancelled) setLoading(false);
+        if (!cancelled) setBatchLoading(false);
       });
 
     return () => {
       cancelled = true;
     };
-  }, [favoriteIds]);
+  }, [favoriteIds, favoritesReady]);
+
+  const mainBusy = !favoritesReady || batchLoading;
 
   useEffect(() => {
     const totalPages = Math.max(1, Math.ceil(items.length / PAGE_SIZE));
@@ -83,7 +93,7 @@ export default function FavoritesPage() {
             返回题库
           </Link>
 
-          <div className="flex flex-col items-end text-right">
+          <div className="flex flex-col items-end gap-1 text-right">
             <h1 className="flex items-center gap-2 text-lg font-bold tracking-tight text-gray-900">
               <span className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-rose-500 to-orange-400 text-white shadow-md shadow-rose-200/50">
                 <HeartFilled className="h-4 w-4 shrink-0" />
@@ -91,14 +101,22 @@ export default function FavoritesPage() {
               我的收藏
             </h1>
             <p className="text-xs text-gray-500">
-              {loading ? "同步中…" : `共 ${favoriteCount} 题 · 数据保存在本机`}
+              {mainBusy
+                ? "加载中…"
+                : `共 ${favoriteCount} 题 · 已同步到云端（同一账号多设备一致）`}
             </p>
+            <AuthBar />
           </div>
         </div>
       </header>
 
       <main className="mx-auto max-w-5xl px-4 py-6">
-        {loading ? (
+        {favoritesError ? (
+          <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+            收藏同步失败：{favoritesError}
+          </div>
+        ) : null}
+        {mainBusy ? (
           <div className="overflow-hidden rounded-2xl border border-gray-200/80 bg-white shadow-sm">
             <div className="divide-y divide-gray-100">
               {Array.from({ length: 6 }).map((_, i) => (
@@ -115,7 +133,7 @@ export default function FavoritesPage() {
               ))}
             </div>
           </div>
-        ) : favoriteCount === 0 ? (
+        ) : favoritesReady && favoriteCount === 0 ? (
           <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-rose-200/80 bg-white/60 px-6 py-20 text-center shadow-inner">
             <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-rose-50 to-orange-50 text-rose-300">
               <HeartOutline className="h-9 w-9 shrink-0" strokeWidth={1.25} />
@@ -149,7 +167,7 @@ export default function FavoritesPage() {
           </div>
         ) : items.length === 0 ? (
           <div className="rounded-2xl border border-amber-200 bg-amber-50/80 px-4 py-8 text-center text-sm text-amber-900">
-            部分收藏可能已失效（源文件已删除）。可在题库中重新收藏。
+            部分收藏可能已失效（题目已下架或仍使用旧版本地路径 ID）。可在题库中重新收藏。
             <div className="mt-3">
               <Link
                 href="/"
@@ -171,6 +189,7 @@ export default function FavoritesPage() {
                   question={q}
                   index={(page - 1) * PAGE_SIZE + i + 1}
                   favorited={isFavorite(q.id)}
+                  favoritesDisabled={!favoritesReady}
                   onFavoriteToggle={toggleFavorite}
                   onClick={(q) => setActiveId(q.id)}
                 />
@@ -189,7 +208,11 @@ export default function FavoritesPage() {
         )}
       </main>
 
-      <QuestionDetail questionId={activeId} onClose={() => setActiveId(null)} />
+      <QuestionDetail
+        questionId={activeId}
+        onClose={() => setActiveId(null)}
+        favoritesDisabled={!favoritesReady}
+      />
     </div>
   );
 }

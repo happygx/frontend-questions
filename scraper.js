@@ -5,9 +5,29 @@
  *   2. node scraper.js
  */
 
-import { mkdirSync, existsSync, writeFileSync } from "fs";
+import { mkdirSync, existsSync, writeFileSync, readFileSync } from "fs";
 import { join, dirname } from "path";
+import { fileURLToPath } from "url";
 import TurndownService from "turndown";
+import { createClient } from "@supabase/supabase-js";
+
+/** ESM 下无 __dirname，用脚本文件所在目录（兼容无 import.meta.dirname 的旧 Node） */
+const SCRAPER_DIR =
+  typeof import.meta.dirname === "string"
+    ? import.meta.dirname
+    : dirname(fileURLToPath(import.meta.url));
+
+// 手动加载 .env.local（Node 脚本环境下 Next.js 不会自动注入）
+try {
+  const envPath = join(SCRAPER_DIR, ".env.local");
+  const envContent = readFileSync(envPath, "utf-8");
+  for (const line of envContent.split(/\r?\n/)) {
+    const m = line.match(/^\s*([^#=\s][^=]*?)\s*=\s*(.*)\s*$/);
+    if (m) process.env[m[1]] = m[2].replace(/^["']|["']$/g, "");
+  }
+} catch {
+  // .env.local 不存在时忽略
+}
 
 // ─────────────────────────────────────────────
 // 配置区：运行前请填写 Cookie
@@ -19,7 +39,7 @@ const CONFIG = {
   utoken.sig=YRtV3iWBOhjQy6qKpCyfz0V5whZfx1ttu7v6E80Br5k`,
 
   // 输出根目录（相对于本脚本所在目录，与 Next 读取的 ./data 一致）
-  OUTPUT_DIR: join(__dirname, "data"),
+  OUTPUT_DIR: join(SCRAPER_DIR, "data"),
 
   // 每次请求之间的随机延迟范围（毫秒），避免触发反爬
   DELAY_MIN: 600,
@@ -29,6 +49,13 @@ const CONFIG = {
   PAGE_SIZE: 20,
 
   BASE_URL: "https://fe.ecool.fun",
+
+  // Supabase：URL 与密钥从 .env.local 读取（脚本开头已加载）
+  SUPABASE_URL: (process.env.NEXT_PUBLIC_SUPABASE_URL || "").trim(),
+  /** 服务角色密钥：可绕过 RLS，爬虫写入 tags/questions 必须用此 key；勿用于前端、勿提交 Git */
+  SUPABASE_SERVICE_ROLE_KEY: (process.env.SUPABASE_SERVICE_ROLE_KEY || "").trim(),
+  /** 仅作后备；anon 默认无法 insert tags/questions（RLS），写入会失败 */
+  SUPABASE_ANON_KEY: (process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "").trim(),
 };
 
 // ─────────────────────────────────────────────
@@ -103,6 +130,79 @@ function sanitizeFilename(name) {
 
 // 清理 Cookie 中的换行和多余空白（防止模板字符串带入缩进/换行导致 Header 非法）
 const CLEAN_COOKIE = CONFIG.COOKIE.replace(/\s*\n\s*/g, " ").trim();
+
+// ─────────────────────────────────────────────
+// Supabase 客户端
+// ─────────────────────────────────────────────
+let supabase = null;
+
+function getSupabase() {
+  if (!supabase) {
+    const url = CONFIG.SUPABASE_URL;
+    const serviceKey = CONFIG.SUPABASE_SERVICE_ROLE_KEY;
+    const anonKey = CONFIG.SUPABASE_ANON_KEY;
+    const key = serviceKey || anonKey;
+    if (!url || !key) {
+      throw new Error(
+        "❌ 未配置 Supabase：请在 .env.local 填写 NEXT_PUBLIC_SUPABASE_URL，并至少填写 SUPABASE_SERVICE_ROLE_KEY（爬虫写入）或 NEXT_PUBLIC_SUPABASE_ANON_KEY",
+      );
+    }
+    if (!serviceKey) {
+      console.warn(
+        "\n⚠️  未配置 SUPABASE_SERVICE_ROLE_KEY。使用 anon key 写入时，若 tags/questions 启用了 RLS，会出现「violates row-level security」且数据进不了库。\n" +
+          "   请到 Supabase → Project Settings → API → service_role，复制密钥到 .env.local：\n" +
+          "   SUPABASE_SERVICE_ROLE_KEY=eyJ...\n" +
+          "   （该密钥拥有完整数据库权限，仅用于本机脚本，不要用于 Next 前端。）\n",
+      );
+    }
+    supabase = createClient(url, key, {
+      auth: { persistSession: false, autoRefreshToken: false },
+    });
+  }
+  return supabase;
+}
+
+/** 将分类标签 upsert 到 Supabase */
+async function upsertTag(tagId, tagName) {
+  const { error } = await getSupabase()
+    .from("tags")
+    .upsert({ id: tagId, tag_name: tagName }, { onConflict: "id" });
+  if (error) throw new Error(`upsertTag failed: ${error.message}`);
+}
+
+/**
+ * 接口常返回 0.5、1.5、2.5 等半档难度；Supabase questions.level 为 integer，直接写入会报
+ * invalid input syntax for type integer。四舍五入到 1–5，非法值则 null。
+ */
+function normalizeLevelForDb(raw) {
+  if (raw == null || raw === "") return null;
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n <= 0) return null;
+  const rounded = Math.round(n);
+  if (rounded < 1) return null;
+  if (rounded > 5) return 5;
+  return rounded;
+}
+
+/** 将题目详情 upsert 到 Supabase */
+async function upsertQuestion(detail, tagId) {
+  const renderType = detail.renderType || "md";
+  const row = {
+    exercise_key: String(detail.exerciseKey || detail.key || detail.id),
+    tag_id: tagId,
+    title: detail.title || "（无标题）",
+    level: normalizeLevelForDb(detail.level ?? detail.difficulty),
+    pivot: detail.pivot ? toMarkdown(detail.pivot, renderType) : null,
+    explanation: detail.explanation
+      ? toMarkdown(detail.explanation, renderType)
+      : null,
+    render_type: renderType,
+  };
+  const { error } = await getSupabase()
+    .from("questions")
+    .upsert(row, { onConflict: "exercise_key" });
+  if (error) throw new Error(`upsertQuestion failed: ${error.message}`);
+}
 
 /** 通用请求封装 */
 async function apiFetch(url) {
@@ -224,6 +324,8 @@ async function main() {
 
   let totalSaved = 0;
   let totalFailed = 0;
+  /** 与 totalFailed 同步，便于终端被截断时仍能回看失败原因 */
+  const failureLog = [];
 
   // 2. 遍历每个分类
   for (const tag of tags) {
@@ -232,6 +334,13 @@ async function main() {
     const tagName = tag.tagName || tag.name || String(tagId);
     const safeTagName = sanitizeFilename(tagName);
     const tagDir = join(CONFIG.OUTPUT_DIR, safeTagName);
+
+    // 将分类同步到 Supabase
+    try {
+      await upsertTag(tagId, tagName);
+    } catch (err) {
+      console.warn(`   ⚠️  Supabase upsertTag 失败（继续本地保存）：${err.message}`);
+    }
 
     console.log(`\n📁 分类：${tagName}（id=${tagId}）`);
     mkdirSync(tagDir, { recursive: true });
@@ -243,6 +352,12 @@ async function main() {
     } catch (err) {
       console.error(`   ⚠️  获取题目列表失败：${err.message}`);
       totalFailed++;
+      failureLog.push({
+        kind: "list",
+        tagId,
+        tagName,
+        message: err.message,
+      });
       continue;
     }
 
@@ -256,12 +371,42 @@ async function main() {
       const filename = sanitizeFilename(title) + ".md";
       const filepath = join(tagDir, filename);
 
-      // 已存在则跳过（断点续爬）
+      // 本地已存在则不再写盘，但仍拉详情并 upsert Supabase（否则断点续跑会永远不进库）
       if (existsSync(filepath)) {
-        console.log(
-          `   [${i + 1}/${exercises.length}] ⏭  跳过（已存在）：${title}`,
+        process.stdout.write(
+          `   [${i + 1}/${exercises.length}] ⏭  本地已存在，仅同步云端：${title.slice(0, 50)}... `,
         );
-        totalSaved++;
+        try {
+          const detail = await fetchDetail(exerciseKey, tagId);
+          try {
+            await upsertQuestion(detail, tagId);
+            console.log("☁️");
+            totalSaved++;
+          } catch (dbErr) {
+            console.log(`⚠️ ${dbErr.message}`);
+            totalFailed++;
+            failureLog.push({
+              kind: "supabase",
+              tagId,
+              tagName,
+              exerciseKey: String(exerciseKey),
+              title: title.slice(0, 80),
+              message: dbErr.message,
+            });
+          }
+        } catch (err) {
+          console.log(`❌ ${err.message}`);
+          totalFailed++;
+          failureLog.push({
+            kind: "detail",
+            tagId,
+            tagName,
+            exerciseKey: String(exerciseKey),
+            title: title.slice(0, 80),
+            message: err.message,
+          });
+        }
+        await randomDelay();
         continue;
       }
 
@@ -272,22 +417,39 @@ async function main() {
       try {
         const detail = await fetchDetail(exerciseKey, tagId);
         const md = buildMarkdown(detail);
+
+        // 写本地 Markdown 文件
         try {
           writeFileSync(filepath, md, "utf-8");
         } catch (writeErr) {
           if (writeErr.code === "ENOENT") {
-            // 防御性补建目录（理论上已创建，但以防万一）
             mkdirSync(dirname(filepath), { recursive: true });
             writeFileSync(filepath, md, "utf-8");
           } else {
             throw writeErr;
           }
         }
+
+        // 同步到 Supabase
+        try {
+          await upsertQuestion(detail, tagId);
+        } catch (dbErr) {
+          console.warn(`\n   ⚠️  Supabase 写入失败（本地已保存）：${dbErr.message}`);
+        }
+
         console.log("✅");
         totalSaved++;
       } catch (err) {
         console.log(`❌ ${err.message}`);
         totalFailed++;
+        failureLog.push({
+          kind: "detail",
+          tagId,
+          tagName,
+          exerciseKey: String(exerciseKey),
+          title: title.slice(0, 80),
+          message: err.message,
+        });
       }
 
       await randomDelay();
@@ -297,6 +459,21 @@ async function main() {
   console.log("\n========================================");
   console.log(`  完成！成功：${totalSaved}，失败：${totalFailed}`);
   console.log(`  输出目录：${CONFIG.OUTPUT_DIR}`);
+  if (failureLog.length > 0) {
+    console.log("\n  失败明细（共 " + failureLog.length + " 条）：");
+    for (const f of failureLog) {
+      if (f.kind === "list") {
+        console.log(
+          `    · [题目列表] ${f.tagName}（id=${f.tagId}）→ ${f.message}`,
+        );
+      } else {
+        console.log(
+          `    · [${f.kind === "supabase" ? "写入库" : "拉详情"}] ${f.tagName}（id=${f.tagId}）` +
+            ` exerciseKey=${f.exerciseKey} → ${f.message}`,
+        );
+      }
+    }
+  }
   console.log("========================================");
 }
 

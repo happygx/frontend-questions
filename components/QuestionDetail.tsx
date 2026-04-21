@@ -11,9 +11,11 @@ import LevelStars from './LevelStars'
 interface Props {
   questionId: string | null
   onClose: () => void
+  /** 收藏云端未就绪时禁用详情内收藏按钮 */
+  favoritesDisabled?: boolean
 }
 
-export default function QuestionDetail({ questionId, onClose }: Props) {
+export default function QuestionDetail({ questionId, onClose, favoritesDisabled = false }: Props) {
   const [detail, setDetail]   = useState<QuestionDetail | null>(null)
   const [loading, setLoading] = useState(false)
   const { isFavorite, toggleFavorite } = useFavorites()
@@ -24,8 +26,13 @@ export default function QuestionDetail({ questionId, onClose }: Props) {
 
     setLoading(true)
     fetch(`/api/question?id=${encodeURIComponent(questionId)}`)
-      .then((r) => r.json())
+      .then(async (r) => {
+        const d = await r.json()
+        if (!r.ok) throw new Error((d as { error?: string }).error ?? r.statusText)
+        return d as QuestionDetail
+      })
       .then((d) => setDetail(d))
+      .catch(() => setDetail(null))
       .finally(() => setLoading(false))
   }, [questionId])
 
@@ -70,19 +77,29 @@ export default function QuestionDetail({ questionId, onClose }: Props) {
           <div className="flex shrink-0 items-center gap-1">
             <button
               type="button"
+              disabled={favoritesDisabled}
               onClick={(e) => {
                 e.stopPropagation()
-                if (questionId) toggleFavorite(questionId)
+                if (favoritesDisabled || !questionId) return
+                void toggleFavorite(questionId)
               }}
-              title={favorited ? '取消收藏' : '加入收藏'}
+              title={
+                favoritesDisabled
+                  ? '收藏同步中…'
+                  : favorited
+                    ? '取消收藏'
+                    : '加入收藏'
+              }
               aria-label={favorited ? '取消收藏' : '加入收藏'}
               aria-pressed={favorited}
               className={[
                 'flex h-9 w-9 items-center justify-center overflow-hidden rounded-lg transition-all active:scale-95',
                 'focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-400/40',
-                favorited
-                  ? 'bg-rose-100 text-rose-600 hover:bg-rose-200/80'
-                  : 'text-gray-400 hover:bg-gray-100 hover:text-rose-500',
+                favoritesDisabled
+                  ? 'cursor-not-allowed opacity-40 text-gray-300'
+                  : favorited
+                    ? 'bg-rose-100 text-rose-600 hover:bg-rose-200/80'
+                    : 'text-gray-400 hover:bg-gray-100 hover:text-rose-500',
               ].join(' ')}
             >
               {favorited ? (

@@ -25,7 +25,9 @@ interface Props {
   question: Question;
   index: number;
   favorited: boolean;
-  onFavoriteToggle: (id: string) => void;
+  /** 收藏云端同步未完成时禁用，避免心形状态与云端不一致 */
+  favoritesDisabled?: boolean;
+  onFavoriteToggle: (id: string) => void | Promise<void>;
   onClick: (q: Question) => void;
 }
 
@@ -33,12 +35,14 @@ export default function QuestionCard({
   question,
   index,
   favorited,
+  favoritesDisabled = false,
   onFavoriteToggle,
   onClick,
 }: Props) {
   const onFavClick = (e: React.MouseEvent) => {
     e.stopPropagation();
-    onFavoriteToggle(question.id);
+    if (favoritesDisabled) return;
+    void onFavoriteToggle(question.id);
   };
 
   return (
@@ -68,16 +72,26 @@ export default function QuestionCard({
 
       <button
         type="button"
+        disabled={favoritesDisabled}
         onClick={onFavClick}
-        title={favorited ? "取消收藏" : "加入收藏"}
+        title={
+          favoritesDisabled
+            ? "收藏同步中…"
+            : favorited
+              ? "取消收藏"
+              : "加入收藏"
+        }
         aria-label={favorited ? "取消收藏" : "加入收藏"}
         aria-pressed={favorited}
         className={[
           "shrink-0 flex h-8 w-8 items-center justify-center overflow-hidden rounded-xl border transition-all duration-200",
-          "active:scale-90 focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-400/50 focus-visible:ring-offset-1 cursor-pointer",
-          favorited
-            ? "border-rose-200 bg-gradient-to-br from-rose-50 to-orange-50/80 text-rose-600"
-            : "border-gray-200/90 bg-white text-gray-400 hover:border-rose-200 hover:bg-rose-50/50 hover:text-rose-500",
+          "active:scale-90 focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-400/50 focus-visible:ring-offset-1",
+          favoritesDisabled
+            ? "cursor-not-allowed opacity-40 border-gray-100 bg-gray-50 text-gray-300"
+            : "cursor-pointer " +
+              (favorited
+                ? "border-rose-200 bg-gradient-to-br from-rose-50 to-orange-50/80 text-rose-600"
+                : "border-gray-200/90 bg-white text-gray-400 hover:border-rose-200 hover:bg-rose-50/50 hover:text-rose-500"),
         ].join(" ")}
       >
         {favorited ? (

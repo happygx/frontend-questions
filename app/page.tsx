@@ -8,6 +8,7 @@ import DifficultyFilter from "@/components/DifficultyFilter";
 import QuestionCard from "@/components/QuestionCard";
 import QuestionDetail from "@/components/QuestionDetail";
 import Pagination from "@/components/Pagination";
+import AuthBar from "@/components/AuthBar";
 import { useFavorites } from "@/lib/favorites";
 import type {
   Category,
@@ -30,7 +31,8 @@ export default function Home() {
 
   const [activeId, setActiveId] = useState<string | null>(null);
 
-  const { isFavorite, toggleFavorite, favoriteCount } = useFavorites();
+  const { isFavorite, toggleFavorite, favoriteCount, ready: favoritesReady, error: favoritesError } =
+    useFavorites();
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // ── 拉取数据 ──
@@ -88,29 +90,33 @@ export default function Home() {
       <header className="sticky top-0 z-40 bg-white border-b border-gray-200 shadow-sm">
         <div className="max-w-5xl mx-auto px-4">
           {/* Title + 搜索 */}
-          <div className="flex items-center justify-between gap-4 py-3">
-            <div className="flex items-center gap-3 shrink-0">
-              <h1 className="text-lg font-bold text-gray-800">📚 题库</h1>
+          <div className="flex flex-wrap items-center justify-between gap-3 py-3">
+            <div className="flex min-w-0 flex-1 items-center gap-3">
+              <h1 className="shrink-0 text-lg font-bold text-gray-800">📚 题库</h1>
               <Link
                 href="/favorites"
-                className="group relative flex items-center gap-1.5 rounded-full border border-gray-200 bg-gray-50/80 px-3 py-1.5 text-xs font-medium text-gray-600 transition-all hover:border-rose-200 hover:bg-gradient-to-r hover:from-rose-50 hover:to-orange-50/80 hover:text-rose-700 hover:shadow-sm"
+                title={favoritesError ?? undefined}
+                className="group relative flex shrink-0 items-center gap-1.5 rounded-full border border-gray-200 bg-gray-50/80 px-3 py-1.5 text-xs font-medium text-gray-600 transition-all hover:border-rose-200 hover:bg-gradient-to-r hover:from-rose-50 hover:to-orange-50/80 hover:text-rose-700 hover:shadow-sm"
               >
                 <HeartFilled className="h-3.5 w-3.5 shrink-0 text-rose-500 transition-transform group-hover:scale-110" />
                 我的收藏
-                {favoriteCount > 0 ? (
+                {favoritesReady && favoriteCount > 0 ? (
                   <span className="min-w-[1.125rem] rounded-full bg-rose-500 px-1 text-center text-[10px] font-semibold leading-tight text-white tabular-nums">
                     {favoriteCount > 99 ? "99+" : favoriteCount}
                   </span>
                 ) : null}
               </Link>
             </div>
-            <input
-              type="search"
-              placeholder="按标题搜索…"
-              title="仅匹配题目标题，不包含正文"
-              className="flex-1 max-w-md h-8 px-3 text-sm rounded-lg border border-gray-200 outline-none focus:border-blue-400 bg-gray-50"
-              onChange={(e) => handleSearch(e.target.value)}
-            />
+            <div className="flex w-full min-w-0 flex-1 items-center justify-end gap-3 sm:w-auto sm:flex-initial">
+              <input
+                type="search"
+                placeholder="按标题搜索…"
+                title="仅匹配题目标题，不包含正文"
+                className="h-8 min-w-0 flex-1 max-w-md rounded-lg border border-gray-200 bg-gray-50 px-3 text-sm outline-none focus:border-blue-400 sm:flex-initial"
+                onChange={(e) => handleSearch(e.target.value)}
+              />
+              <AuthBar />
+            </div>
           </div>
 
           {/* 分类 tabs */}
@@ -166,6 +172,7 @@ export default function Home() {
                   question={q}
                   index={(page - 1) * PAGE_SIZE + i + 1}
                   favorited={isFavorite(q.id)}
+                  favoritesDisabled={!favoritesReady}
                   onFavoriteToggle={toggleFavorite}
                   onClick={(q) => setActiveId(q.id)}
                 />
@@ -186,7 +193,11 @@ export default function Home() {
       </main>
 
       {/* ── 题目详情 Modal ── */}
-      <QuestionDetail questionId={activeId} onClose={() => setActiveId(null)} />
+      <QuestionDetail
+        questionId={activeId}
+        onClose={() => setActiveId(null)}
+        favoritesDisabled={!favoritesReady}
+      />
     </div>
   );
 }

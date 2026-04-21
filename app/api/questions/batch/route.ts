@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getQuestionsByIds } from '@/lib/questions'
 
+export const dynamic = 'force-dynamic'
+
 export async function POST(req: NextRequest) {
   let body: unknown
   try {
@@ -14,6 +16,11 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Expected { ids: string[] }' }, { status: 400 })
   }
 
-  const questions = getQuestionsByIds(ids as string[])
-  return NextResponse.json({ questions })
+  try {
+    const questions = await getQuestionsByIds(ids as string[])
+    return NextResponse.json({ questions })
+  } catch (e) {
+    const message = e instanceof Error ? e.message : 'Unknown error'
+    return NextResponse.json({ error: message }, { status: 500 })
+  }
 }
