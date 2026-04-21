@@ -45,32 +45,41 @@ export default function QuestionCard({
   }
 
   return (
-    <div className="group flex items-center border-b border-gray-100 bg-white transition-colors last:border-b-0 hover:bg-blue-50/40">
-      {/* 主体链接区：序号 + 分类 + 标题 + 难度 */}
+    <div className="group flex items-stretch border-b border-gray-100 bg-white transition-colors last:border-b-0 hover:bg-blue-50/40">
+      {/* 主体链接区 */}
       <Link
         href={`/question/${encodeURIComponent(question.id)}`}
-        className="flex min-w-0 flex-1 items-center gap-3 px-4 py-3"
+        className="flex min-w-0 flex-1 flex-col gap-1.5 px-4 py-3 sm:flex-row sm:items-center sm:gap-3"
         prefetch={false}
       >
-        <span className="w-6 shrink-0 text-right text-xs text-gray-400">
+        {/* 序号：仅桌面显示 */}
+        <span className="hidden w-6 shrink-0 text-right text-xs text-gray-400 sm:block">
           {index}
         </span>
 
-        <span className={`shrink-0 rounded px-2 py-0.5 text-xs font-medium ${getBadgeClass(question.category)}`}>
-          {question.category}
-        </span>
+        {/* 移动端：分类徽章 + 星级同行；桌面端：仅分类 */}
+        <div className="flex items-center gap-2">
+          <span className={`shrink-0 rounded px-2 py-0.5 text-xs font-medium ${getBadgeClass(question.category)}`}>
+            {question.category}
+          </span>
+          <span className="sm:hidden">
+            <LevelStars level={question.level} />
+          </span>
+        </div>
 
+        {/* 标题 */}
         <p className="min-w-0 flex-1 text-sm font-medium leading-snug text-gray-800 line-clamp-2 group-hover:text-blue-600">
           {question.title}
         </p>
 
-        <div className="shrink-0 pt-0.5">
+        {/* 星级：仅桌面显示 */}
+        <div className="hidden shrink-0 pt-0.5 sm:block">
           <LevelStars level={question.level} />
         </div>
       </Link>
 
       {/* 收藏按钮：独立于链接之外，避免嵌套交互元素 */}
-      <div className="shrink-0 px-3">
+      <div className="flex shrink-0 items-center px-2 sm:px-3">
         <button
           type="button"
           disabled={favoritesDisabled}
@@ -79,7 +88,7 @@ export default function QuestionCard({
           aria-label={favorited ? '取消收藏' : '加入收藏'}
           aria-pressed={favorited}
           className={[
-            'flex h-8 w-8 items-center justify-center overflow-hidden rounded-xl border transition-all duration-200',
+            'flex h-10 w-10 items-center justify-center overflow-hidden rounded-xl border transition-all duration-200 sm:h-8 sm:w-8',
             'active:scale-90 focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-400/50 focus-visible:ring-offset-1',
             favoritesDisabled
               ? 'cursor-not-allowed border-gray-100 bg-gray-50 text-gray-300 opacity-40'

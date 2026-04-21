@@ -16,20 +16,26 @@ export default function CategoryTabs({ categories, active, totalAll, onChange }:
   ];
 
   return (
-    <div className="flex flex-wrap gap-2 overflow-x-auto pb-1 scrollbar-hide">
+    <div
+      className="flex gap-1.5 overflow-x-auto pb-1.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [-webkit-overflow-scrolling:touch]"
+      role="tablist"
+      aria-label="题目分类"
+    >
       {tabs.map((tab) => (
         <button
           key={tab.name}
+          role="tab"
+          aria-selected={active === tab.name}
           onClick={() => onChange(tab.name)}
-          className={`shrink-0 px-3 py-1.5 rounded-md text-sm font-medium transition-colors cursor-pointer whitespace-nowrap ${
+          className={`shrink-0 px-2.5 py-1.5 rounded-md text-xs sm:text-sm font-medium transition-colors cursor-pointer whitespace-nowrap ${
             active === tab.name
               ? "bg-blue-600 text-white"
-              : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+              : "bg-gray-100 text-gray-600 hover:bg-gray-200 active:bg-gray-200"
           }`}
         >
           {tab.label}
           <span
-            className={`ml-1 text-xs ${active === tab.name ? "text-blue-100" : "text-gray-400"}`}
+            className={`ml-1 text-[11px] sm:text-xs ${active === tab.name ? "text-blue-100" : "text-gray-400"}`}
           >
             ({tab.count})
           </span>

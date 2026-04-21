@@ -38,7 +38,31 @@ export default function Pagination({ page, pageSize, total, onChange }: Props) {
         共 <strong>{total}</strong> 题 · 第 {start}–{end} 条
       </span>
 
-      <div className="flex items-center gap-1">
+      {/* 移动端：简化为 ‹ 当前页/总页数 › */}
+      <div className="flex items-center gap-2 sm:hidden">
+        <button
+          className={page === 1 ? disabled : normal}
+          disabled={page === 1}
+          onClick={() => onChange(page - 1)}
+          aria-label="上一页"
+        >
+          ‹
+        </button>
+        <span className="text-sm text-gray-500 tabular-nums select-none">
+          {page} / {totalPages}
+        </span>
+        <button
+          className={page === totalPages ? disabled : normal}
+          disabled={page === totalPages}
+          onClick={() => onChange(page + 1)}
+          aria-label="下一页"
+        >
+          ›
+        </button>
+      </div>
+
+      {/* 桌面端：完整页码列表 */}
+      <div className="hidden sm:flex items-center gap-1">
         <button
           className={page === 1 ? disabled : normal}
           disabled={page === 1}

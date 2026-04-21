@@ -92,12 +92,6 @@ export default function FavoritesPage() {
           </Link>
 
           <div className="flex flex-col items-end gap-1 text-right">
-            <h1 className="flex items-center gap-2 text-lg font-bold tracking-tight text-gray-900">
-              <span className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-rose-500 to-orange-400 text-white shadow-md shadow-rose-200/50">
-                <HeartFilled className="h-4 w-4 shrink-0" />
-              </span>
-              我的收藏
-            </h1>
             <AuthBar />
           </div>
         </div>

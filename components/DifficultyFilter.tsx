@@ -16,17 +16,17 @@ interface Props {
 
 export default function DifficultyFilter({ active, onChange }: Props) {
   return (
-    <div className="flex gap-2 items-center">
-      <span className="text-sm text-gray-500 shrink-0">难度：</span>
+    <div className="flex items-center gap-2">
+      <span className="text-xs text-gray-500 shrink-0 sm:text-sm">难度：</span>
       <div className="flex gap-1">
         {TABS.map((t) => (
           <button
             key={t.value}
             onClick={() => onChange(t.value)}
-            className={`px-3 py-1 rounded text-sm transition-colors cursor-pointer ${
+            className={`min-h-[36px] px-3 py-1.5 rounded text-xs sm:text-sm transition-colors cursor-pointer ${
               active === t.value
                 ? "bg-blue-50 text-blue-600 border border-blue-300 font-medium"
-                : "text-gray-600 border border-gray-200 hover:border-gray-300"
+                : "text-gray-600 border border-gray-200 hover:border-gray-300 active:bg-gray-50"
             }`}
           >
             {t.label}

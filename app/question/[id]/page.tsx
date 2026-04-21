@@ -76,10 +76,10 @@ export default async function QuestionPage({ params }: { params: Promise<{ id: s
       </header>
 
       {/* Main */}
-      <main className="mx-auto max-w-5xl px-4 py-8 pb-20">
+      <main className="mx-auto max-w-5xl px-3 py-5 pb-24 sm:px-4 sm:py-8 sm:pb-20">
         {/* 题目 Meta + 标题 */}
-        <div className="mb-8">
-          <div className="mb-3 flex flex-wrap items-center gap-2">
+        <div className="mb-6 sm:mb-8">
+          <div className="mb-2.5 flex flex-wrap items-center gap-2">
             <span className={`rounded-full border px-2.5 py-0.5 text-xs font-medium ${badgeClass}`}>
               {detail.category}
             </span>
@@ -89,16 +89,16 @@ export default async function QuestionPage({ params }: { params: Promise<{ id: s
             </span>
           </div>
 
-          <h1 className="text-xl font-bold leading-snug text-gray-900 sm:text-2xl">
+          <h1 className="text-lg font-bold leading-snug text-gray-900 sm:text-2xl">
             {detail.title}
           </h1>
         </div>
 
         {/* 分割线 */}
-        <div className="mb-8 h-px bg-gradient-to-r from-gray-200 via-gray-100 to-transparent" />
+        <div className="mb-6 h-px bg-gradient-to-r from-gray-200 via-gray-100 to-transparent sm:mb-8" />
 
         {/* Markdown 正文 */}
-        <div className="rounded-2xl border border-gray-200/60 bg-white px-6 py-8 shadow-sm sm:px-8">
+        <div className="rounded-xl border border-gray-200/60 bg-white px-4 py-5 shadow-sm sm:rounded-2xl sm:px-8 sm:py-8">
           <MarkdownContent content={markdownBody} />
         </div>
       </main>

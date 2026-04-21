@@ -1,55 +1,52 @@
-'use client'
+"use client";
 
-import Link from 'next/link'
-import { useCallback, useEffect, useState } from 'react'
-import { getSupabaseBrowser } from '@/lib/supabase-browser'
+import Link from "next/link";
+import { useCallback, useEffect, useState } from "react";
+import { getSupabaseBrowser } from "@/lib/supabase-browser";
 
 export default function AuthBar() {
-  const [email, setEmail] = useState<string | null | undefined>(undefined)
+  const [email, setEmail] = useState<string | null | undefined>(undefined);
 
   const sync = useCallback(async () => {
-    const supabase = getSupabaseBrowser()
+    const supabase = getSupabaseBrowser();
     // getSession() 读 localStorage，无网络请求无 Web Lock，避免与其他并发 getUser() 争锁
     const {
       data: { session },
-    } = await supabase.auth.getSession()
-    setEmail(session?.user?.email ?? null)
-  }, [])
+    } = await supabase.auth.getSession();
+    setEmail(session?.user?.email ?? null);
+  }, []);
 
   useEffect(() => {
-    void sync()
-    const supabase = getSupabaseBrowser()
+    void sync();
+    const supabase = getSupabaseBrowser();
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange(() => {
-      void sync()
-    })
-    return () => subscription.unsubscribe()
-  }, [sync])
+      void sync();
+    });
+    return () => subscription.unsubscribe();
+  }, [sync]);
 
   const signOut = async () => {
-    await getSupabaseBrowser().auth.signOut()
-  }
+    await getSupabaseBrowser().auth.signOut();
+  };
 
   if (email === undefined) {
-    return <span className="text-xs text-gray-300 tabular-nums">…</span>
+    return <span className="text-xs text-gray-300 tabular-nums">…</span>;
   }
 
   if (email) {
     return (
       <div className="flex max-w-[200px] flex-col items-end gap-0.5 sm:max-w-none sm:flex-row sm:items-center sm:gap-2">
-        <span className="truncate text-xs text-gray-500" title={email}>
-          {email}
-        </span>
         <button
           type="button"
           onClick={() => void signOut()}
-          className="shrink-0 text-xs font-medium text-gray-500 underline-offset-2 hover:text-gray-800 hover:underline"
+          className="shrink-0 text-xs font-medium text-gray-500 underline-offset-2 hover:text-blue-600 hover:underline cursor-pointer"
         >
           退出
         </button>
       </div>
-    )
+    );
   }
 
   return (
@@ -59,5 +56,5 @@ export default function AuthBar() {
     >
       登录
     </Link>
-  )
+  );
 }

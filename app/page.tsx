@@ -93,7 +93,47 @@ export default function Home() {
       {/* ── 顶部 Header ── */}
       <header className="sticky top-0 z-40 bg-white border-b border-gray-200 shadow-sm">
         <div className="max-w-5xl mx-auto px-4">
-          <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3 py-3">
+
+          {/* ── 移动端双行布局（< sm） ── */}
+          <div className="sm:hidden">
+            {/* 行一：Logo + 收藏入口 + AuthBar */}
+            <div className="flex items-center justify-between gap-2 py-2.5">
+              <h1 className="shrink-0 text-base font-bold text-gray-800">
+                📚 题库
+              </h1>
+              <div className="flex min-w-0 items-center gap-2">
+                <Link
+                  href="/favorites"
+                  title={favoritesError ?? undefined}
+                  className="group flex shrink-0 items-center gap-1 rounded-full border border-gray-200 bg-gray-50/80 px-2.5 py-1.5 text-xs font-medium text-gray-600 transition-all active:bg-rose-50"
+                >
+                  <HeartFilled className="h-3.5 w-3.5 shrink-0 text-rose-500" />
+                  {favoritesReady && favoriteCount > 0 ? (
+                    <span className="min-w-[1rem] rounded-full bg-rose-500 px-1 text-center text-[10px] font-semibold leading-tight text-white tabular-nums">
+                      {favoriteCount > 99 ? "99+" : favoriteCount}
+                    </span>
+                  ) : (
+                    <span>收藏</span>
+                  )}
+                </Link>
+                <AuthBar />
+              </div>
+            </div>
+            {/* 行二：全宽搜索框 */}
+            <div className="pb-2.5">
+              <input
+                suppressHydrationWarning
+                type="search"
+                placeholder="按标题搜索…"
+                title="仅匹配题目标题，不包含正文"
+                className="h-9 w-full rounded-lg border border-gray-200 bg-gray-50 px-3 text-sm outline-none focus:border-blue-400 focus:bg-white"
+                onChange={(e) => handleSearch(e.target.value)}
+              />
+            </div>
+          </div>
+
+          {/* ── 桌面端三栏布局（≥ sm） ── */}
+          <div className="hidden sm:grid grid-cols-[1fr_auto_1fr] items-center gap-3 py-3">
             {/* 左：标题 + 收藏 */}
             <div className="flex min-w-0 items-center gap-3">
               <h1 className="shrink-0 text-lg font-bold text-gray-800">
@@ -114,7 +154,7 @@ export default function Home() {
               </Link>
             </div>
 
-            {/* 中：搜索框（绝对居中） */}
+            {/* 中：搜索框 */}
             <input
               suppressHydrationWarning
               type="search"
