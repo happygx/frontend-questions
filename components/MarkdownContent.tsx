@@ -1,7 +1,46 @@
 'use client'
 
+import { useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+
+/**
+ * Markdown 里图片的防御式渲染：
+ *   - referrerPolicy="no-referrer"：少数外链图床做 Referer 防盗链，
+ *     带上我们自己域名的 Referer 反而会 403；不带 Referer 通常能放行。
+ *   - lazy + async decoding：长题 + 多图时避免一次性拉满。
+ *   - onError：CDN 抽风或链接失效时降级为占位块，并暴露原链接给用户手动打开。
+ */
+function MarkdownImage({
+  src,
+  alt,
+}: { src?: string; alt?: string }) {
+  const [failed, setFailed] = useState(false)
+  if (!src) return null
+  if (failed) {
+    return (
+      <a
+        href={src}
+        target="_blank"
+        rel="noreferrer noopener"
+        className="my-3 inline-flex items-center gap-2 rounded-md border border-dashed border-gray-300 bg-gray-50 px-3 py-2 text-xs text-gray-500 no-underline hover:bg-gray-100"
+      >
+        <span>图片加载失败，点击尝试在新窗口打开</span>
+        <span className="truncate max-w-[18rem] text-gray-400">{src}</span>
+      </a>
+    )
+  }
+  return (
+    <img
+      src={src}
+      alt={alt ?? ''}
+      loading="lazy"
+      decoding="async"
+      referrerPolicy="no-referrer"
+      onError={() => setFailed(true)}
+    />
+  )
+}
 
 export default function MarkdownContent({ content }: { content: string }) {
   return (
@@ -46,7 +85,12 @@ export default function MarkdownContent({ content }: { content: string }) {
         prose-hr:border-gray-200 prose-hr:my-6
       "
     >
-      <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm]}
+        components={{ img: MarkdownImage }}
+      >
+        {content}
+      </ReactMarkdown>
     </div>
   )
 }

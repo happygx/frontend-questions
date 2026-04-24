@@ -10,6 +10,7 @@ import { join, dirname } from "path";
 import { fileURLToPath } from "url";
 import TurndownService from "turndown";
 import { createClient } from "@supabase/supabase-js";
+import { createImageMirror } from "./lib/image-mirror.mjs";
 
 /** ESM 下无 __dirname，用脚本文件所在目录（兼容无 import.meta.dirname 的旧 Node） */
 const SCRAPER_DIR =
@@ -101,9 +102,25 @@ function toMarkdown(content, renderType) {
 const CLEAN_COOKIE = CONFIG.COOKIE.replace(/\s*\n\s*/g, " ").trim();
 
 // ─────────────────────────────────────────────
-// Supabase 客户端
+// Supabase 客户端 & 图片镜像器（单例）
 // ─────────────────────────────────────────────
 let supabase = null;
+let imageMirror = null;
+
+/** 本次爬取累计的图片镜像失败，用于在末尾打印统计 */
+const imageFailureLog = [];
+
+function getImageMirror() {
+  if (!imageMirror) {
+    imageMirror = createImageMirror({
+      supabase: getSupabase(),
+      bucket: process.env.IMAGE_BUCKET || "question-images",
+      // 爬虫里不需要逐张打印下载日志，保留进度行简洁；如需调试改为 console.log
+      logger: () => {},
+    });
+  }
+  return imageMirror;
+}
 
 function getSupabase() {
   if (!supabase) {
@@ -181,13 +198,35 @@ async function upsertQuestion(detail, tagId) {
   const renderType = detail.renderType || "md";
   const exerciseKey = String(detail.exerciseKey || detail.key || detail.id);
 
+  // 先拿到原始 Markdown
+  let pivotMd = detail.pivot ? toMarkdown(detail.pivot, renderType) : null;
+  let explanationMd = detail.explanation
+    ? toMarkdown(detail.explanation, renderType)
+    : null;
+
+  // 把 Markdown 中命中白名单域名的图片镜像到 Supabase Storage，并替换为公开 URL。
+  // 镜像失败不阻断题目写入：原 URL 保留，仅记录到 imageFailureLog。
+  const mirror = getImageMirror();
+  if (pivotMd) {
+    const r = await mirror.rewriteMarkdown(pivotMd);
+    pivotMd = r.text;
+    for (const f of r.failed) {
+      imageFailureLog.push({ exerciseKey, field: "pivot", ...f });
+    }
+  }
+  if (explanationMd) {
+    const r = await mirror.rewriteMarkdown(explanationMd);
+    explanationMd = r.text;
+    for (const f of r.failed) {
+      imageFailureLog.push({ exerciseKey, field: "explanation", ...f });
+    }
+  }
+
   const contentFields = {
     title: detail.title || "（无标题）",
     level: normalizeLevelForDb(detail.level ?? detail.difficulty),
-    pivot: detail.pivot ? toMarkdown(detail.pivot, renderType) : null,
-    explanation: detail.explanation
-      ? toMarkdown(detail.explanation, renderType)
-      : null,
+    pivot: pivotMd,
+    explanation: explanationMd,
     render_type: renderType,
   };
 
@@ -382,6 +421,23 @@ async function main() {
           `    · [拉详情/写库] ${f.tagName}（id=${f.tagId}）exerciseKey=${f.exerciseKey} → ${f.message}`,
         );
       }
+    }
+  }
+  if (imageFailureLog.length > 0) {
+    // 同一 URL 可能在多道题里重复出现，这里按 origUrl 去重聚合
+    const byUrl = new Map();
+    for (const f of imageFailureLog) {
+      const item = byUrl.get(f.origUrl) ?? { reason: f.reason, occurrences: 0, sampleKey: f.exerciseKey };
+      item.occurrences++;
+      byUrl.set(f.origUrl, item);
+    }
+    console.log(
+      `\n  图片镜像失败（${imageFailureLog.length} 次，涉及 ${byUrl.size} 个 URL；原链接已保留）：`,
+    );
+    for (const [url, info] of byUrl) {
+      console.log(
+        `    · x${info.occurrences.toString().padStart(3)}  ${info.reason}  ${url}`,
+      );
     }
   }
   console.log("========================================");
