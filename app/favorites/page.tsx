@@ -9,7 +9,7 @@ import QuestionCard from "@/components/QuestionCard";
 import { useFavorites } from "@/lib/favorites";
 import type { Question } from "@/types";
 
-const PAGE_SIZE = 20;
+const PAGE_SIZE = 10;
 
 export default function FavoritesPage() {
   const {

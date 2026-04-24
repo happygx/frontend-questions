@@ -29,7 +29,7 @@ import type {
   QuestionsResponse,
 } from "@/types";
 
-const PAGE_SIZE = 20;
+const PAGE_SIZE = 10;
 
 export default function Home() {
   // useSearchParams 所在组件必须被 Suspense 包裹，否则 Next.js 会把整页退化为 CSR
