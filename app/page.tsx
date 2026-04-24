@@ -1,7 +1,15 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { HeartFilled } from "@/components/HeartIcon";
 import CategoryTabs from "@/components/CategoryTabs";
 import DifficultyFilter from "@/components/DifficultyFilter";
@@ -9,6 +17,11 @@ import QuestionCard from "@/components/QuestionCard";
 import Pagination from "@/components/Pagination";
 import AuthBar from "@/components/AuthBar";
 import { useFavorites } from "@/lib/favorites";
+import {
+  buildListQueryString,
+  parseListSearchParams,
+  persistListReturnHref,
+} from "@/lib/list-query";
 import type {
   Category,
   DifficultyGroup,
@@ -19,10 +32,31 @@ import type {
 const PAGE_SIZE = 20;
 
 export default function Home() {
-  const [category, setCategory] = useState("all");
-  const [difficulty, setDifficulty] = useState<DifficultyGroup>("all");
-  const [searchQ, setSearchQ] = useState("");
-  const [page, setPage] = useState(1);
+  // useSearchParams 所在组件必须被 Suspense 包裹，否则 Next.js 会把整页退化为 CSR
+  return (
+    <Suspense fallback={null}>
+      <HomeInner />
+    </Suspense>
+  );
+}
+
+function HomeInner() {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+
+  // URL 是筛选/分页的唯一状态源；组件内所有状态从这里派生
+  const { category, difficulty, q, page } = useMemo(
+    () => parseListSearchParams(new URLSearchParams(searchParams.toString())),
+    [searchParams],
+  );
+
+  // 搜索框是纯 UI 临时态（打字过程），debounce 之后才推到 URL
+  const [searchInput, setSearchInput] = useState(q);
+  // URL 上的 q 被外部改变（如浏览器后退）时，把输入框同步回去
+  useEffect(() => {
+    setSearchInput(q);
+  }, [q]);
 
   const [data, setData] = useState<QuestionsResponse | null>(null);
   const [loading, setLoading] = useState(false);
@@ -39,12 +73,12 @@ export default function Home() {
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const fetchData = useCallback(
-    async (cat: string, diff: DifficultyGroup, q: string, p: number) => {
+    async (cat: string, diff: DifficultyGroup, query: string, p: number) => {
       setLoading(true);
       const params = new URLSearchParams({
         category: cat,
         difficulty: diff,
-        q,
+        q: query,
         page: String(p),
         pageSize: String(PAGE_SIZE),
       });
@@ -55,7 +89,7 @@ export default function Home() {
         setData(json);
         if (json.categories.length) setCategories(json.categories);
         // 只在无任何筛选时更新"全部"总数，避免切换分类/搜索后数字跳变
-        if (cat === 'all' && diff === 'all' && !q) setTotalAll(json.total);
+        if (cat === "all" && diff === "all" && !query) setTotalAll(json.total);
       } finally {
         setLoading(false);
       }
@@ -64,25 +98,57 @@ export default function Home() {
   );
 
   useEffect(() => {
-    fetchData(category, difficulty, searchQ, page);
-  }, [category, difficulty, searchQ, page, fetchData]);
+    fetchData(category, difficulty, q, page);
+  }, [category, difficulty, q, page, fetchData]);
+
+  // 把当前列表 URL 快照到 sessionStorage，供详情页「返回题库」复用
+  useEffect(() => {
+    persistListReturnHref(
+      pathname,
+      new URLSearchParams(searchParams.toString()),
+    );
+  }, [pathname, searchParams]);
+
+  // 合并新的筛选/分页补丁，以 URL 为载体派发；{ scroll: false } 避免自动跳顶
+  const commitState = useCallback(
+    (patch: {
+      category?: string;
+      difficulty?: DifficultyGroup;
+      q?: string;
+      page?: number;
+    }) => {
+      const next = {
+        category: patch.category ?? category,
+        difficulty: patch.difficulty ?? difficulty,
+        q: patch.q ?? q,
+        page: patch.page ?? page,
+      };
+      const qs = buildListQueryString(next);
+      const href = qs ? `${pathname}?${qs}` : pathname;
+      router.replace(href, { scroll: false });
+    },
+    [router, pathname, category, difficulty, q, page],
+  );
 
   function handleCategoryChange(name: string) {
-    setCategory(name);
-    setPage(1);
+    commitState({ category: name, page: 1 });
   }
 
   function handleDifficultyChange(d: DifficultyGroup) {
-    setDifficulty(d);
-    setPage(1);
+    commitState({ difficulty: d, page: 1 });
   }
 
-  function handleSearch(value: string) {
+  function handleSearchInput(value: string) {
+    setSearchInput(value);
     if (searchTimer.current) clearTimeout(searchTimer.current);
     searchTimer.current = setTimeout(() => {
-      setSearchQ(value);
-      setPage(1);
+      commitState({ q: value, page: 1 });
     }, 300);
+  }
+
+  function handlePageChange(p: number) {
+    commitState({ page: p });
+    window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
   const questions: Question[] = data?.questions ?? [];
@@ -127,7 +193,8 @@ export default function Home() {
                 placeholder="按标题搜索…"
                 title="仅匹配题目标题，不包含正文"
                 className="h-9 w-full rounded-lg border border-gray-200 bg-gray-50 px-3 text-sm outline-none focus:border-blue-400 focus:bg-white"
-                onChange={(e) => handleSearch(e.target.value)}
+                value={searchInput}
+                onChange={(e) => handleSearchInput(e.target.value)}
               />
             </div>
           </div>
@@ -161,7 +228,8 @@ export default function Home() {
               placeholder="按标题搜索…"
               title="仅匹配题目标题，不包含正文"
               className="h-8 w-56 rounded-lg border border-gray-200 bg-gray-50 px-3 text-sm outline-none focus:border-blue-400 focus:bg-white sm:w-72"
-              onChange={(e) => handleSearch(e.target.value)}
+              value={searchInput}
+              onChange={(e) => handleSearchInput(e.target.value)}
             />
 
             {/* 右：AuthBar */}
@@ -215,12 +283,12 @@ export default function Home() {
             </div>
           ) : (
             <div className="divide-y divide-gray-50">
-              {questions.map((q, i) => (
+              {questions.map((qItem, i) => (
                 <QuestionCard
-                  key={q.id}
-                  question={q}
+                  key={qItem.id}
+                  question={qItem}
                   index={(page - 1) * PAGE_SIZE + i + 1}
-                  favorited={isFavorite(q.id)}
+                  favorited={isFavorite(qItem.id)}
                   favoritesDisabled={!favoritesReady}
                   onFavoriteToggle={toggleFavorite}
                 />
@@ -232,10 +300,7 @@ export default function Home() {
             page={page}
             pageSize={PAGE_SIZE}
             total={total}
-            onChange={(p) => {
-              setPage(p);
-              window.scrollTo({ top: 0, behavior: "smooth" });
-            }}
+            onChange={handlePageChange}
           />
         </div>
       </main>

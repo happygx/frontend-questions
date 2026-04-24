@@ -1,10 +1,10 @@
 import { notFound } from 'next/navigation'
-import Link from 'next/link'
 import { getQuestionDetail } from '@/lib/questions'
 import LevelStars from '@/components/LevelStars'
 import MarkdownContent from '@/components/MarkdownContent'
 import FavoriteButton from '@/components/FavoriteButton'
 import AuthGuard from '@/components/AuthGuard'
+import BackToQuestions from '@/components/BackToQuestions'
 
 const CATEGORY_BADGE: Record<string, string> = {
   JavaScript:  'bg-yellow-50 text-yellow-700 border-yellow-200',
@@ -59,17 +59,7 @@ export default async function QuestionPage({ params }: { params: Promise<{ id: s
       {/* Sticky Header */}
       <header className="sticky top-0 z-40 border-b border-gray-200/60 bg-white/90 backdrop-blur-md shadow-sm">
         <div className="mx-auto flex h-14 max-w-5xl items-center justify-between gap-3 px-4">
-          <Link
-            href="/"
-            className="group flex shrink-0 items-center gap-2 text-sm font-medium text-gray-500 transition-colors hover:text-gray-900"
-          >
-            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-gray-100 text-gray-500 transition-colors group-hover:bg-blue-50 group-hover:text-blue-600">
-              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" aria-hidden="true">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5 3 12m0 0 7.5-7.5M3 12h18" />
-              </svg>
-            </span>
-            <span className="hidden sm:inline">返回题库</span>
-          </Link>
+          <BackToQuestions />
 
           <FavoriteButton questionId={detail.id} />
         </div>
