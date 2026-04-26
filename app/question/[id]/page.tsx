@@ -5,6 +5,7 @@ import MarkdownContent from '@/components/MarkdownContent'
 import FavoriteButton from '@/components/FavoriteButton'
 import AuthGuard from '@/components/AuthGuard'
 import BackToQuestions from '@/components/BackToQuestions'
+import QuestionNav from '@/components/QuestionNav'
 
 const CATEGORY_BADGE: Record<string, string> = {
   JavaScript:  'bg-yellow-50 text-yellow-700 border-yellow-200',
@@ -91,6 +92,9 @@ export default async function QuestionPage({ params }: { params: Promise<{ id: s
         <div className="rounded-xl border border-gray-200/60 bg-white px-4 py-5 shadow-sm sm:rounded-2xl sm:px-8 sm:py-8">
           <MarkdownContent content={markdownBody} />
         </div>
+
+        {/* 上一题 / 下一题 */}
+        <QuestionNav currentId={detail.id} />
       </main>
     </div>
     </AuthGuard>
