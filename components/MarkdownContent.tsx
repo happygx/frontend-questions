@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, type ImgHTMLAttributes } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 
@@ -10,13 +10,18 @@ import remarkGfm from 'remark-gfm'
  *     带上我们自己域名的 Referer 反而会 403；不带 Referer 通常能放行。
  *   - lazy + async decoding：长题 + 多图时避免一次性拉满。
  *   - onError：CDN 抽风或链接失效时降级为占位块，并暴露原链接给用户手动打开。
+ *
+ * props 与原生 <img> 对齐（React 19 起 src 类型为 string | Blob），
+ * 这样才能兼容 react-markdown v10 的 Components['img'] 签名。
  */
 function MarkdownImage({
   src,
   alt,
-}: { src?: string; alt?: string }) {
+  ...rest
+}: ImgHTMLAttributes<HTMLImageElement>) {
   const [failed, setFailed] = useState(false)
-  if (!src) return null
+  // markdown 来源永远是字符串 URL；非字符串直接忽略，避免类型噪音
+  if (typeof src !== 'string' || !src) return null
   if (failed) {
     return (
       <a
@@ -32,6 +37,7 @@ function MarkdownImage({
   }
   return (
     <img
+      {...rest}
       src={src}
       alt={alt ?? ''}
       loading="lazy"
