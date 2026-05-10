@@ -1,129 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
-import {
-  QUESTIONS_LIST_RETURN_KEY,
-  parseListSearchParams,
-} from "@/lib/list-query";
-
-interface QuestionKey {
-  id: string;
-  title: string;
-}
-
-interface NavState {
-  prev: QuestionKey | null;
-  next: QuestionKey | null;
-}
-
-const KEYS_CACHE_PREFIX = "questionKeys:";
-
-interface FilterState {
-  category?: string;
-  difficulty?: string;
-  q?: string;
-}
-
-/** 从 sessionStorage 中保存的列表 URL 还原筛选条件，无记录则视作"全部" */
-function readFilterFromSession(): FilterState {
-  if (typeof window === "undefined") return {};
-  try {
-    const stored = sessionStorage.getItem(QUESTIONS_LIST_RETURN_KEY);
-    if (!stored) return {};
-    const url = new URL(stored, window.location.origin);
-    const parsed = parseListSearchParams(url.searchParams);
-    const f: FilterState = {};
-    if (parsed.category !== "all") f.category = parsed.category;
-    if (parsed.difficulty !== "all") f.difficulty = parsed.difficulty;
-    if (parsed.q) f.q = parsed.q;
-    return f;
-  } catch {
-    return {};
-  }
-}
-
-function filterToParams(filter: FilterState): URLSearchParams {
-  const params = new URLSearchParams();
-  if (filter.category) params.set("category", filter.category);
-  if (filter.difficulty) params.set("difficulty", filter.difficulty);
-  if (filter.q) params.set("q", filter.q);
-  return params;
-}
-
-async function loadKeys(filter: FilterState): Promise<QuestionKey[]> {
-  const params = filterToParams(filter);
-  const cacheKey = KEYS_CACHE_PREFIX + params.toString();
-
-  try {
-    const cached = sessionStorage.getItem(cacheKey);
-    if (cached) {
-      const parsed = JSON.parse(cached);
-      if (Array.isArray(parsed)) return parsed as QuestionKey[];
-    }
-  } catch {
-    /* ignore */
-  }
-
-  const qs = params.toString();
-  const res = await fetch(`/api/questions/keys${qs ? `?${qs}` : ""}`);
-  if (!res.ok) throw new Error("failed to load question keys");
-  const json = (await res.json()) as { keys?: QuestionKey[] };
-  const keys = json.keys ?? [];
-
-  try {
-    sessionStorage.setItem(cacheKey, JSON.stringify(keys));
-  } catch {
-    /* ignore quota / private mode */
-  }
-  return keys;
-}
+import { useQuestionPosition, type QuestionKey } from "@/lib/question-keys";
 
 export default function QuestionNav({ currentId }: { currentId: string }) {
-  const [nav, setNav] = useState<NavState | null>(null);
+  const { ready, prev, next } = useQuestionPosition(currentId);
 
-  useEffect(() => {
-    let cancelled = false;
-
-    (async () => {
-      const filter = readFilterFromSession();
-      let keys: QuestionKey[] = [];
-      try {
-        keys = await loadKeys(filter);
-      } catch {
-        if (!cancelled) setNav({ prev: null, next: null });
-        return;
-      }
-
-      let idx = keys.findIndex((k) => k.id === currentId);
-
-      // 当前题目不在筛选集合中（如直接打开链接、或筛选状态已过期），回退到全量
-      if (idx === -1 && Object.keys(filter).length > 0) {
-        try {
-          keys = await loadKeys({});
-          idx = keys.findIndex((k) => k.id === currentId);
-        } catch {
-          /* ignore */
-        }
-      }
-
-      if (cancelled) return;
-      if (idx === -1) {
-        setNav({ prev: null, next: null });
-        return;
-      }
-      setNav({
-        prev: idx > 0 ? keys[idx - 1] : null,
-        next: idx < keys.length - 1 ? keys[idx + 1] : null,
-      });
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [currentId]);
-
-  if (nav === null) {
+  if (!ready) {
     return (
       <nav className="mt-8 grid grid-cols-1 gap-3 sm:mt-10 sm:grid-cols-2">
         <div className="h-[68px] animate-pulse rounded-xl border border-gray-200/60 bg-white" />
@@ -132,15 +15,15 @@ export default function QuestionNav({ currentId }: { currentId: string }) {
     );
   }
 
-  if (!nav.prev && !nav.next) return null;
+  if (!prev && !next) return null;
 
   return (
     <nav
       className="mt-8 grid grid-cols-1 gap-3 sm:mt-10 sm:grid-cols-2"
       aria-label="题目导航"
     >
-      <NavCard side="prev" item={nav.prev} />
-      <NavCard side="next" item={nav.next} />
+      <NavCard side="prev" item={prev} />
+      <NavCard side="next" item={next} />
     </nav>
   );
 }

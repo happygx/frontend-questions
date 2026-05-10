@@ -6,6 +6,7 @@ import FavoriteButton from '@/components/FavoriteButton'
 import AuthGuard from '@/components/AuthGuard'
 import BackToQuestions from '@/components/BackToQuestions'
 import QuestionNav from '@/components/QuestionNav'
+import QuestionIndexBadge from '@/components/QuestionIndexBadge'
 
 const CATEGORY_BADGE: Record<string, string> = {
   JavaScript:  'bg-yellow-50 text-yellow-700 border-yellow-200',
@@ -78,6 +79,7 @@ export default async function QuestionPage({ params }: { params: Promise<{ id: s
             <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-500">
               {detail.levelLabel}
             </span>
+            <QuestionIndexBadge currentId={detail.id} />
           </div>
 
           <h1 className="text-lg font-bold leading-snug text-gray-900 sm:text-2xl">
