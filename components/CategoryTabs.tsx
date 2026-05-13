@@ -17,7 +17,7 @@ export default function CategoryTabs({ categories, active, totalAll, onChange }:
 
   return (
     <div
-      className="flex gap-1.5 overflow-x-auto pb-1.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [-webkit-overflow-scrolling:touch]"
+      className="flex gap-1.5 overflow-x-auto pb-1.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [-webkit-overflow-scrolling:touch] sm:flex-wrap sm:gap-2 sm:overflow-x-visible sm:pb-1"
       role="tablist"
       aria-label="题目分类"
     >
