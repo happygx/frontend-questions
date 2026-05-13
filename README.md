@@ -52,7 +52,12 @@
 ├── supabase/migrations/
 │   ├── 20260420120000_favorites.sql     # 收藏表 + RLS 策略
 │   └── 20260421000000_question_tags.sql # 题目-分类多对多关联表
-└── scraper.js                  # 题目爬虫（写入 Supabase）
+├── lib/image-mirror.mjs        # 图片镜像模块（爬虫与迁移脚本共用）
+├── scripts/
+│   ├── ensure-bucket.mjs       # 幂等创建 Supabase Storage bucket
+│   ├── migrate-images.mjs      # 存量图片迁移（--dry-run 预估 / --limit 限额）
+│   └── inspect-images.mjs      # 图片巡检：域名分布 + HEAD/GET 存活率
+└── scraper.js                  # 题目爬虫（写入 Supabase + 镜像图片）
 ```
 
 ## 数据库结构
@@ -121,6 +126,51 @@ npm run scrape
 ```
 
 > 爬虫会从源站抓取题目并通过 `upsert` 写入 Supabase，重复运行不会产生重复数据。
+
+## 图片镜像
+
+源站 `static.ecool.fun` 启用了 Referer 防盗链，直接引用会让所有图片在本站 403。为此题库内所有图片都镜像到 **Supabase Storage**（bucket：`question-images`），Markdown 中的图片 URL 会改写为 Supabase 公开链接，彻底去除对源站的依赖。
+
+### 环境变量（除基础外额外）
+
+```env
+# service role 密钥：Storage 写入必须，勿提交到前端 / 仓库
+SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
+
+# 可选，默认 question-images
+# IMAGE_BUCKET=question-images
+```
+
+### 一次性初始化（创建 bucket）
+
+```bash
+node scripts/ensure-bucket.mjs
+```
+
+> 幂等：已存在则只校验 `public=true`，否则创建一个 20MB 单文件上限、仅允许 `image/*` 的 public bucket。
+
+### 爬虫流程（已内置）
+
+`npm run scrape` 会在每道题的 Markdown 转换后自动下载图片到 Supabase Storage 并改写 URL，使用 `sha256(url)` 作为文件名保证幂等与去重。当前白名单域名：`static.ecool.fun`、`*.byteimg.com`、`pic*.zhimg.com`、`static.vue-js.com`、`*.githubusercontent.com`。
+
+### 存量迁移
+
+```bash
+node scripts/migrate-images.mjs --dry-run   # 评估工作量
+node scripts/migrate-images.mjs --limit 5   # 冒烟 5 条
+node scripts/migrate-images.mjs             # 全量迁移
+```
+
+幂等可重跑：文件名由 URL hash 决定，Storage `upsert` 命中同名即跳过。
+
+### 巡检
+
+```bash
+node scripts/inspect-images.mjs            # 只打印域名分布
+node scripts/inspect-images.mjs --check    # 额外做 HEAD/GET 存活率检测
+```
+
+异常 URL 会写入 `bad-urls.json`，按状态聚合。HEAD 请求失败会回退到完整 GET 验证（Supabase Storage 对部分 object 的 HEAD 会返回 400，是已知假阳性）。
 
 ## 部署到 Vercel
 

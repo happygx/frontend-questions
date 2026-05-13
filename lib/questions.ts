@@ -231,6 +231,77 @@ export async function getQuestionsByIds(ids: string[]): Promise<Question[]> {
   return ids.map((id) => map.get(id)).filter((q): q is Question => q != null)
 }
 
+// ─────────────────────────────────────────────
+// 详情页「上一题 / 下一题」用：仅取 id + title 的有序列表
+// 与 getQuestions() 的筛选/排序保持完全一致，但不分页
+// ─────────────────────────────────────────────
+
+export interface QuestionKey {
+  id: string
+  title: string
+}
+
+export interface GetQuestionKeysParams {
+  category?: string
+  difficulty?: Exclude<DifficultyGroup, 'all'>
+  q?: string
+}
+
+export async function getQuestionKeys(params: GetQuestionKeysParams): Promise<QuestionKey[]> {
+  const { category, difficulty, q } = params
+  const supabase = getSupabaseServer()
+  const kw = q ? sanitizeSearchKw(q) : ''
+
+  let tagId: number | undefined
+  if (category && category !== 'all') {
+    const { data: tag, error: te } = await supabase
+      .from('tags')
+      .select('id')
+      .eq('tag_name', category)
+      .maybeSingle()
+    if (te) throw new Error(te.message)
+    if (!tag) return []
+    tagId = tag.id as number
+  }
+
+  // 单分类下题量较少，直接全量；无分类时分页累加避免 PostgREST 1000 行上限
+  let restrictKeys: string[] | null = null
+  if (tagId !== undefined) {
+    const { data: keyRows, error: keyErr } = await supabase
+      .from('question_tags')
+      .select('exercise_key')
+      .eq('tag_id', tagId)
+    if (keyErr) throw new Error(keyErr.message)
+    restrictKeys = (keyRows ?? []).map((r) => (r as { exercise_key: string }).exercise_key)
+    if (restrictKeys.length === 0) return []
+  }
+
+  const collected: QuestionKey[] = []
+  let from = 0
+  for (;;) {
+    let qb = supabase
+      .from('questions')
+      .select('exercise_key, title')
+
+    if (restrictKeys) qb = qb.in('exercise_key', restrictKeys)
+    if (difficulty === 'beginner')          qb = qb.in('level', [1, 2])
+    else if (difficulty === 'intermediate') qb = qb.eq('level', 3)
+    else if (difficulty === 'advanced')     qb = qb.in('level', [4, 5])
+    else if (difficulty === 'unknown')      qb = qb.is('level', null)
+    if (kw) qb = qb.ilike('title', `%${kw}%`)
+
+    const { data, error } = await qb.order('title').range(from, from + CHUNK - 1)
+    if (error) throw new Error(error.message)
+    const rows = (data ?? []) as { exercise_key: string; title: string }[]
+    if (rows.length === 0) break
+    for (const r of rows) collected.push({ id: r.exercise_key, title: r.title })
+    if (rows.length < CHUNK) break
+    from += CHUNK
+  }
+
+  return collected
+}
+
 export async function getQuestionDetail(id: string): Promise<QuestionDetail | null> {
   const supabase = getSupabaseServer()
   const { data, error } = await supabase
